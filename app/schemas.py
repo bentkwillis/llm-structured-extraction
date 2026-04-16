@@ -10,7 +10,7 @@ class ExtractInvoiceRequest(BaseModel):
 class ApiError(BaseModel):
     code: str
     message: str
-    failure_points: str # validation | model | parsing | post_validation
+    failure_point: str # validation | model | parsing | post_validation
 
 class ErrorEnvelope(BaseModel):
     success: bool = False
