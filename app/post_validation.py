@@ -18,7 +18,7 @@ def _validate_date(value: str | None, field_name: str) -> None:
         raise ValueError(
             ApiError(
                 code="INVALID_DATE_FORMAT",
-                message=f"{field_name} must be YYY-MM-DD",
+                message=f"{field_name} must be YYYY-MM-DD",
                 failure_point="post_validation",
             ).model_dump_json()
         )

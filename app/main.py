@@ -8,12 +8,13 @@ from fastapi.exceptions import RequestValidationError
 
 from app.schemas import (
     ExtractInvoiceRequest,
-    InvoiceExtractionResult,
     SuccessEnvelope,
     ErrorEnvelope,
     ApiError,
     ValidationConfig,
 )
+from app.parser import parse_invoice_result
+from app.post_validation import validate_invoice_result
 from app.validation import validate_extract_request
 
 app = FastAPI()
@@ -79,18 +80,26 @@ async def extract_invoice(req: ExtractInvoiceRequest, request: Request):
     try:
         validate_extract_request(req, cfg)
 
+        # Temporary stand-in for model output until LLM client is integrated.
+        raw_model_output = json.dumps(
+            {
+                "supplier_name": None,
+                "invoice_number": None,
+                "invoice_date": None,
+                "due_date": None,
+                "currency": None,
+                "subtotal": None,
+                "tax": None,
+                "total": None,
+            }
+        )
+
+        parsed_result = parse_invoice_result(raw_model_output)
+        validate_invoice_result(parsed_result)
+
         body = SuccessEnvelope(
             request_id=request_id,
-            data=InvoiceExtractionResult(
-                supplier_name=None,
-                invoice_number=None,
-                invoice_date=None,
-                due_date=None,
-                currency=None,
-                subtotal=None,
-                tax=None,
-                total=None,
-            ),
+            data=parsed_result,
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
         _log(request_id, latency_ms, None)
