@@ -7,6 +7,18 @@ class ExtractInvoiceRequest(BaseModel):
     document_type: str = Field(min_length=1, max_length=128)
     text: str = Field(min_length=1)
 
+class InvoiceExtractionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    supplier_name: str | None = None
+    invoice_number: str | None = None
+    invoice_date: str | None = None
+    due_date: str | None = None
+    currency: str | None = None
+    subtotal: float | None = None
+    tax: float | None = None
+    total: float | None = None
+
 class ApiError(BaseModel):
     code: str
     message: str
@@ -20,7 +32,7 @@ class ErrorEnvelope(BaseModel):
 class SuccessEnvelope(BaseModel):
     success: bool = True
     request_id: str
-    data: dict # placeholder for now; strict output schema comes in later
+    data: InvoiceExtractionResult
 
 class ValidationConfig(BaseModel):
     model_config = ConfigDict(frozen=True)

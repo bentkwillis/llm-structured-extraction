@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 
 from app.schemas import (
     ExtractInvoiceRequest,
+    InvoiceExtractionResult,
     SuccessEnvelope,
     ErrorEnvelope,
     ApiError,
@@ -80,7 +81,16 @@ async def extract_invoice(req: ExtractInvoiceRequest, request: Request):
 
         body = SuccessEnvelope(
             request_id=request_id,
-            data={"status": "validated"},
+            data=InvoiceExtractionResult(
+                supplier_name=None,
+                invoice_number=None,
+                invoice_date=None,
+                due_date=None,
+                currency=None,
+                subtotal=None,
+                tax=None,
+                total=None,
+            ),
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
         _log(request_id, latency_ms, None)
