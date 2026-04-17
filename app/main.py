@@ -124,6 +124,25 @@ async def extract_invoice(req: ExtractInvoiceRequest):
         prompt_chars = len(prompt)
         stage_latency_ms["prompt_build"] = int((time.perf_counter() - t0) * 1000)
 
+        if not prompt.strip():
+            raise ValueError(
+                ApiError(
+                    code="INVALID_REQUEST",
+                    message="prompt is empty after prompt build",
+                    failure_point="validation",
+                ).model_dump_json()
+            )
+        
+        if text_chars < cfg.min_text_chars:
+            raise ValueError(
+                ApiError(
+                    code="TEXT_TOO_SHORT",
+                    message=f"text must be at least {cfg.min_text_chars} characters",
+                    failure_point="validation",
+                ).model_dump_json()
+            )
+            
+
         t0 = time.perf_counter()
         raw_model_output = extract_invoice_json(
             prompt=prompt,

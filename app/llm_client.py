@@ -64,6 +64,7 @@ def extract_invoice_json(
     payload = {
         "model": model,
         "temperature": 0,
+        "max_tokens": 300,
         "messages": [
             {
                 "role": "system",
