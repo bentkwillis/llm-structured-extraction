@@ -11,32 +11,32 @@ ISO_CURRENCY = {
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-def _validate_date(value: str | None, field_name: str) -> None:
+def _validate_date(value: str | None, field_name: str) -> str | None:
+    """Validate date format. Return warning message or None if valid."""
     if value is None:
-        return
+        return None
     if not DATE_RE.match(value):
-        raise ValueError(
-            ApiError(
-                code="INVALID_DATE_FORMAT",
-                message=f"{field_name} must be YYYY-MM-DD",
-                failure_point="post_validation",
-            ).model_dump_json()
-        )
+        return f"{field_name} is not in YYYY-MM-DD format"
     try:
         date.fromisoformat(value)
-    except ValueError as exc:
-        raise ValueError(
-            ApiError(
-                code="INVALID_DATE_VALUE",
-                message=f"{field_name} is not a real calendar date",
-                failure_point="post_validation",
-            ).model_dump_json()
-        ) from exc
+    except ValueError:
+        return f"{field_name} is not a real calendar date"
+    return None
     
-def validate_invoice_result(result: InvoiceExtractionResult) -> None:
-    _validate_date(result.invoice_date, "invoice_date")
-    _validate_date(result.due_date, "due_date")
+def validate_invoice_result(result: InvoiceExtractionResult) -> list[str]:
+    """Validate invoice result. Return list of warnings (never raises)."""
+    warnings: list[str] = []
 
+    # Date validation: warn but don't fail
+    date_warning = _validate_date(result.invoice_date, "invoice_date")
+    if date_warning:
+        warnings.append(date_warning)
+
+    date_warning = _validate_date(result.due_date, "due_date")
+    if date_warning:
+        warnings.append(date_warning)
+
+    # Currency validation: fail if invalid
     if result.currency is not None and result.currency not in ISO_CURRENCY:
         raise ValueError(
             ApiError(
@@ -45,15 +45,18 @@ def validate_invoice_result(result: InvoiceExtractionResult) -> None:
                 failure_point="post_validation",
             ).model_dump_json()
         )
-    
-    if result.subtotal is not None and result.tax is not None and result.total is not None:
+
+    # Totals validation: warn if inconsistent
+    if (
+        result.subtotal is not None
+        and result.tax is not None
+        and result.total is not None
+    ):
         expected_total = round(result.subtotal + result.tax, 2)
         actual_total = round(result.total, 2)
         if expected_total != actual_total:
-            raise ValueError(
-                ApiError(
-                    code="TOTAL_MISMATCH",
-                    message="subtotal + tax must equal total",
-                    failure_point="post_validation",
-                ).model_dump_json()
+            warnings.append(
+                f"totals do not match: subtotal ({result.subtotal}) + tax ({result.tax}) = {expected_total}, but total is {actual_total}"
             )
+
+    return warnings

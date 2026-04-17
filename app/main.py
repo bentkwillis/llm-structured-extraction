@@ -97,11 +97,12 @@ async def extract_invoice(req: ExtractInvoiceRequest):
         )
 
         parsed_result = parse_invoice_result(raw_model_output)
-        validate_invoice_result(parsed_result)
+        warnings = validate_invoice_result(parsed_result)
 
         body = SuccessEnvelope(
             request_id=request_id,
             data=parsed_result,
+            warnings=warnings,
         )
 
         latency_ms = int((time.perf_counter() - started) * 1000)

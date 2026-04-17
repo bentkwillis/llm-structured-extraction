@@ -33,6 +33,7 @@ class SuccessEnvelope(BaseModel):
     success: bool = True
     request_id: str
     data: InvoiceExtractionResult
+    warnings: list[str] = [] # Non-fatal validation issues
 
 class ValidationConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
