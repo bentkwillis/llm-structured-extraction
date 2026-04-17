@@ -89,6 +89,23 @@ def _safe_api_error_from_value_error(e: Exception) -> ApiError:
         )
 
 
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+    started = time.perf_counter()
+    request_id = await _extract_request_id(request)
+
+    first = exc.errors()[0] if exc.errors() else None
+    if first:
+        loc = ".".join(str(p) for p in first.get("loc", []))
+        msg = first.get("msg", "Invalid request payload")
+        message = f"{loc}: {msg}" if loc else msg
+    else:
+        message = "Invalid request payload"
+
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    return _validation_error_response(request_id, message, latency_ms)
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     started = time.perf_counter()
