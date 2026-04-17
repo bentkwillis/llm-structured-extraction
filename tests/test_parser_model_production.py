@@ -57,7 +57,71 @@ def test_parser_accepts_json_with_trailing_text(monkeypatch) -> None:
 
     assert resp.status_code == 200
     assert body["success"] is True
+    assert body["request_id"] == "pm-trailing-001"
     assert body["data"]["invoice_number"] == "INV-200"
+
+
+def test_parser_accepts_leading_noise_before_json(monkeypatch) -> None:
+    request_id = "pm-leading-001"
+
+    def fake_model_output(*args, **kwargs) -> str:
+        return (
+            "Some explanation before "
+            '{"supplier_name":"ACME","invoice_number":"INV-300","invoice_date":"2026-04-11",'
+            '"due_date":"2026-05-11","currency":"USD","subtotal":100.0,"tax":10.0,"total":110.0}'
+        )
+
+    monkeypatch.setattr("app.main.extract_invoice_json", fake_model_output)
+
+    resp = client.post("/v1/extract/invoice", json=_payload(request_id))
+    body = resp.json()
+
+    assert resp.status_code == 200
+    assert body["success"] is True
+    assert body["request_id"] == request_id
+    assert body["data"]["invoice_number"] == "INV-300"
+
+
+def test_parser_handles_braces_inside_string_values(monkeypatch) -> None:
+    request_id = "pm-braces-001"
+
+    def fake_model_output(*args, **kwargs) -> str:
+        return (
+            '{"supplier_name":"ACME {North}","invoice_number":"INV-301","invoice_date":"2026-04-11",'
+            '"due_date":"2026-05-11","currency":"USD","subtotal":100.0,"tax":10.0,"total":110.0}'
+            " trailing"
+        )
+
+    monkeypatch.setattr("app.main.extract_invoice_json", fake_model_output)
+
+    resp = client.post("/v1/extract/invoice", json=_payload(request_id))
+    body = resp.json()
+
+    assert resp.status_code == 200
+    assert body["success"] is True
+    assert body["request_id"] == request_id
+    assert body["data"]["supplier_name"] == "ACME {North}"
+
+
+def test_parser_selects_valid_invoice_object_with_multiple_json_objects(monkeypatch) -> None:
+    request_id = "pm-multi-001"
+
+    def fake_model_output(*args, **kwargs) -> str:
+        return (
+            '{} irrelevant {} '
+            '{"supplier_name":"ACME","invoice_number":"INV-302","invoice_date":"2026-04-11",'
+            '"due_date":"2026-05-11","currency":"USD","subtotal":100.0,"tax":10.0,"total":110.0}'
+        )
+
+    monkeypatch.setattr("app.main.extract_invoice_json", fake_model_output)
+
+    resp = client.post("/v1/extract/invoice", json=_payload(request_id))
+    body = resp.json()
+
+    assert resp.status_code == 200
+    assert body["success"] is True
+    assert body["request_id"] == request_id
+    assert body["data"]["invoice_number"] == "INV-302"
 
 
 def test_parser_rejects_partial_json(monkeypatch) -> None:
