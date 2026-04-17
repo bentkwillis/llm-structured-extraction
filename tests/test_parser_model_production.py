@@ -220,3 +220,21 @@ def test_model_timeout_error_envelope_shape(monkeypatch) -> None:
     assert body["request_id"] == request_id
     assert body["error"]["code"] == "MODEL_TIMEOUT"
     assert body["error"]["failure_point"] == "model"
+
+
+def test_unknown_value_error_maps_to_system_failure_point(monkeypatch) -> None:
+    request_id = "pm-unknown-001"
+
+    def fake_model_output(*args, **kwargs) -> str:
+        raise ValueError("unexpected unstructured error")
+
+    monkeypatch.setattr("app.main.extract_invoice_json", fake_model_output)
+
+    resp = client.post("/v1/extract/invoice", json=_payload(request_id))
+    body = resp.json()
+
+    assert resp.status_code == 400
+    _assert_standard_error_envelope(body)
+    assert body["request_id"] == request_id
+    assert body["error"]["code"] == "INTERNAL_ERROR"
+    assert body["error"]["failure_point"] == "system"

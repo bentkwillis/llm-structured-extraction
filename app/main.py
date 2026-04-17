@@ -85,7 +85,7 @@ def _safe_api_error_from_value_error(e: Exception) -> ApiError:
         return ApiError(
             code="INTERNAL_ERROR",
             message="unexpected processing error",
-            failure_point="model",
+            failure_point="system",
         )
 
 
