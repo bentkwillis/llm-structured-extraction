@@ -11,6 +11,9 @@ ISO_CURRENCY = {
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+# Policy: date issues are non-fatal warnings, not hard failures.
+DATE_VALIDATION_MODE = "warning"
+
 def _validate_date(value: str | None, field_name: str) -> str | None:
     """Validate date format. Return warning message or None if valid."""
     if value is None:

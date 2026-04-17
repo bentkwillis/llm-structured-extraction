@@ -238,3 +238,25 @@ def test_unknown_value_error_maps_to_system_failure_point(monkeypatch) -> None:
     assert body["request_id"] == request_id
     assert body["error"]["code"] == "INTERNAL_ERROR"
     assert body["error"]["failure_point"] == "system"
+
+
+def test_invalid_dates_are_warnings_not_errors(monkeypatch) -> None:
+    request_id = "pm-date-warning-001"
+
+    def fake_model_output(*args, **kwargs) -> str:
+        return (
+            '{"supplier_name":"ACME","invoice_number":"INV-400",'
+            '"invoice_date":"04/11/2026","due_date":"2026-13-40",'
+            '"currency":"USD","subtotal":100.0,"tax":10.0,"total":110.0}'
+        )
+
+    monkeypatch.setattr("app.main.extract_invoice_json", fake_model_output)
+
+    resp = client.post("/v1/extract/invoice", json=_payload(request_id))
+    body = resp.json()
+
+    assert resp.status_code == 200
+    assert body["success"] is True
+    assert body["request_id"] == request_id
+    assert any("invoice_date" in warning for warning in body["warnings"])
+    assert any("due_date" in warning for warning in body["warnings"])
