@@ -29,6 +29,8 @@ def _log(
     failure_point: str | None,
     text_chars: int | None = None,
     prompt_chars: int | None = None,
+    stage_latency_ms: dict[str, int] | None = None,
+    retry_count: int | None = None,
 ) -> None:
     print(
         json.dumps(
@@ -38,6 +40,8 @@ def _log(
                 "text_chars": text_chars,
                 "prompt_chars": prompt_chars,
                 "failure_point": failure_point,
+                "stage_latency_ms": stage_latency_ms,
+                "retry_count": retry_count,
             }
         )
     )
@@ -108,21 +112,33 @@ async def extract_invoice(req: ExtractInvoiceRequest):
     request_id = req.request_id
     text_chars = len(req.text)
     prompt_chars: int | None = None
+    stage_latency_ms: dict[str, int] = {}
 
     try:
+        t0 = time.perf_counter()
         validate_extract_request(req, cfg)
+        stage_latency_ms["validation"] = int((time.perf_counter() - t0) * 1000)
 
+        t0 = time.perf_counter()
         prompt = build_invoice_prompt(req.text)
         prompt_chars = len(prompt)
+        stage_latency_ms["prompt_build"] = int((time.perf_counter() - t0) * 1000)
 
+        t0 = time.perf_counter()
         raw_model_output = extract_invoice_json(
             prompt=prompt,
             request_id=request_id,
             timeout_seconds=8.0,
         )
+        stage_latency_ms["model"] = int((time.perf_counter() - t0) * 1000)
 
+        t0 = time.perf_counter()
         parsed_result = parse_invoice_result(raw_model_output)
+        stage_latency_ms["parsing"] = int((time.perf_counter() - t0) * 1000)
+
+        t0 = time.perf_counter()
         warnings = validate_invoice_result(parsed_result)
+        stage_latency_ms["parsing"] = int((time.perf_counter() - t0) * 1000)
 
         body = SuccessEnvelope(
             request_id=request_id,
@@ -137,6 +153,8 @@ async def extract_invoice(req: ExtractInvoiceRequest):
             failure_point=None,
             text_chars=text_chars,
             prompt_chars=prompt_chars,
+            stage_latency_ms=stage_latency_ms,
+            retry_count=None,
         )
         return JSONResponse(status_code=200, content=body.model_dump())
 
@@ -149,6 +167,8 @@ async def extract_invoice(req: ExtractInvoiceRequest):
             failure_point=parsed.failure_point,
             text_chars=text_chars,
             prompt_chars=prompt_chars,
+            stage_latency_ms=stage_latency_ms,
+            retry_count=None,
         )
         err = ErrorEnvelope(request_id=request_id, error=parsed)
         return JSONResponse(status_code=400, content=err.model_dump())
