@@ -77,6 +77,31 @@ def _safe_api_error_from_value_error(e: ValueError) -> ApiError:
             failure_point="model",
         )
 
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    started = time.perf_counter()
+    request_id = await _extract_request_id(request)
+
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    _log(
+        request_id = request_id,
+        latency_ms=latency_ms,
+        failure_point="system",
+        text_chars=None,
+        prompt_chars=None,
+    )
+
+    err = ErrorEnvelope(
+        request_id=request_id,
+        error=ApiError(
+            code="INTERNAL_ERROR",
+            message="an unexpected error occurred",
+            failure_point="system",
+        ),
+    )
+    return JSONResponse(status_code=500, content=err.model_dump())
+
 @app.post("/v1/extract/invoice")
 async def extract_invoice(req: ExtractInvoiceRequest):
     started = time.perf_counter()
@@ -127,3 +152,4 @@ async def extract_invoice(req: ExtractInvoiceRequest):
         )
         err = ErrorEnvelope(request_id=request_id, error=parsed)
         return JSONResponse(status_code=400, content=err.model_dump())
+    
