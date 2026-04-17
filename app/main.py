@@ -138,7 +138,7 @@ async def extract_invoice(req: ExtractInvoiceRequest):
 
         t0 = time.perf_counter()
         warnings = validate_invoice_result(parsed_result)
-        stage_latency_ms["parsing"] = int((time.perf_counter() - t0) * 1000)
+        stage_latency_ms["post_validation"] = int((time.perf_counter() - t0) * 1000)
 
         body = SuccessEnvelope(
             request_id=request_id,
