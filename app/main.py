@@ -68,7 +68,7 @@ def _validation_error_response(
             failure_point="validation",
         ),
     )
-    _log(request_id, latency_ms, "validation")
+    _log(request_id, latency_ms, "validation", retry_count=0)
     return JSONResponse(status_code=400, content=err.model_dump())
 
 def _safe_api_error_from_value_error(e: Exception) -> ApiError:
@@ -118,6 +118,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         failure_point="system",
         text_chars=None,
         prompt_chars=None,
+        retry_count=0,
     )
 
     err = ErrorEnvelope(
@@ -197,7 +198,7 @@ async def extract_invoice(req: ExtractInvoiceRequest):
             text_chars=text_chars,
             prompt_chars=prompt_chars,
             stage_latency_ms=stage_latency_ms,
-            retry_count=None,
+            retry_count=0,
         )
         return JSONResponse(status_code=200, content=body.model_dump())
 
@@ -211,7 +212,7 @@ async def extract_invoice(req: ExtractInvoiceRequest):
             text_chars=text_chars,
             prompt_chars=prompt_chars,
             stage_latency_ms=stage_latency_ms,
-            retry_count=None,
+            retry_count=0,
         )
         err = ErrorEnvelope(request_id=request_id, error=parsed)
         return JSONResponse(status_code=400, content=err.model_dump())
