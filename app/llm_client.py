@@ -78,13 +78,20 @@ def extract_invoice_json(
     }
 
     started = time.perf_counter()
+    deadline = started + timeout_seconds
     attempt = 0
 
     try:
-        with httpx.Client(timeout=timeout_seconds) as client:
+        with httpx.Client() as client:
             while attempt <= max_retries:
+                remaining = deadline - time.perf_counter()
+                if remaining <= 0:
+                    latency_ms = int((time.perf_counter() - started) * 1000)
+                    _log_model_call(request_id, latency_ms, model, None, "model", attempt)
+                    raise _model_error("MODEL_TIMEOUT", "model request timed out after retries")
+
                 try:
-                    response = client.post(url, headers=headers, json=payload)
+                    response = client.post(url, headers=headers, json=payload, timeout=remaining)
                     response.raise_for_status()
 
                     data = response.json()
@@ -100,7 +107,7 @@ def extract_invoice_json(
                     return content
 
                 except httpx.TimeoutException:
-                    if attempt < max_retries:
+                    if attempt < max_retries and (deadline - time.perf_counter()) > 0:
                         attempt += 1
                         continue
                     latency_ms = int((time.perf_counter() - started) * 1000)
@@ -133,7 +140,7 @@ def extract_invoice_json(
         _log_model_call(request_id, latency_ms, model, None, "model", attempt)
         raise _model_error("MODEL_TIMEOUT", "model request timed out") from None
 
-    except (KeyError, ValueError, json.JSONDecodeError) as exc:
+    except (KeyError, json.JSONDecodeError) as exc:
         latency_ms = int((time.perf_counter() - started) * 1000)
         _log_model_call(request_id, latency_ms, model, None, "model", attempt)
         raise _model_error("MODEL_PROVIDER_ERROR", "model response format was unexpected") from exc
