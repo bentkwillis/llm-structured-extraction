@@ -25,6 +25,7 @@ def _log_model_call(
     model: str,
     token_usage: dict | None,
     failure_point: str | None,
+    retry_count: int = 0,
 ) -> None:
     print(
         json.dumps(
@@ -32,8 +33,11 @@ def _log_model_call(
                 "request_id": request_id,
                 "latency_ms": latency_ms,
                 "model": model,
-                "token_usage": token_usage,
+                "input_tokens": token_usage.get("prompt_tokens") if token_usage else None,
+                "output_tokens": token_usage.get("completion_tokens") if token_usage else None,
+                "total_tokens": token_usage.get("total_tokens") if token_usage else None,
                 "failure_point": failure_point,
+                "retry_count": retry_count,
             }
         )
     )
@@ -43,6 +47,7 @@ def extract_invoice_json(
     prompt: str,
     request_id: str | None = None,
     timeout_seconds: float = 8.0,
+    max_retries: int = 1,
 ) -> str:
     api_key = os.getenv("OPENAI_API_KEY")
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -72,43 +77,62 @@ def extract_invoice_json(
     }
 
     started = time.perf_counter()
+    attempt = 0
 
     try:
         with httpx.Client(timeout=timeout_seconds) as client:
-            response = client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
+            while attempt <= max_retries:
+                try:
+                    response = client.post(url, headers=headers, json=payload)
+                    response.raise_for_status()
 
-        data = response.json()
-        content = data["choices"][0]["message"]["content"]
+                    data = response.json()
+                    content = data["choices"][0]["message"]["content"]
 
-        if not isinstance(content, str) or not content.strip():
-            latency_ms = int((time.perf_counter() - started) * 1000)
-            _log_model_call(request_id, latency_ms, model, data.get("usage"), "model")
-            raise _model_error("MODEL_PROVIDER_ERROR", "model returned empty content")
+                    if not isinstance(content, str) or not content.strip():
+                        latency_ms = int((time.perf_counter() - started) * 1000)
+                        _log_model_call(request_id, latency_ms, model, data.get("usage"), "model", attempt)
+                        raise _model_error("MODEL_PROVIDER_ERROR", "model returned empty content")
 
+                    latency_ms = int((time.perf_counter() - started) * 1000)
+                    _log_model_call(request_id, latency_ms, model, data.get("usage"), None, attempt)
+                    return content
+
+                except httpx.TimeoutException:
+                    if attempt < max_retries:
+                        attempt += 1
+                        continue
+                    latency_ms = int((time.perf_counter() - started) * 1000)
+                    _log_model_call(request_id, latency_ms, model, None, "model", attempt)
+                    raise _model_error("MODEL_TIMEOUT", "model request timed out after retries") from None
+
+                except httpx.HTTPStatusError as exc:
+                    status = exc.response.status_code
+                    is_transient = status == 429 or status >= 500
+                    if is_transient and attempt < max_retries:
+                        attempt += 1
+                        continue
+                    latency_ms = int((time.perf_counter() - started) * 1000)
+                    _log_model_call(request_id, latency_ms, model, None, "model", attempt)
+                    raise _model_error(
+                        "MODEL_PROVIDER_ERROR",
+                        f"model provider returned HTTP {status}",
+                    ) from exc
+
+                except httpx.RequestError as exc:
+                    if attempt < max_retries:
+                        attempt += 1
+                        continue
+                    latency_ms = int((time.perf_counter() - started) * 1000)
+                    _log_model_call(request_id, latency_ms, model, None, "model", attempt)
+                    raise _model_error("MODEL_PROVIDER_ERROR", "model provider request failed") from exc
+
+    except httpx.TimeoutException:
         latency_ms = int((time.perf_counter() - started) * 1000)
-        _log_model_call(request_id, latency_ms, model, data.get("usage"), None)
-        return content
-
-    except httpx.TimeoutException as exc:
-        latency_ms = int((time.perf_counter() - started) * 1000)
-        _log_model_call(request_id, latency_ms, model, None, "model")
-        raise _model_error("MODEL_TIMEOUT", "model request timed out") from exc
-
-    except httpx.HTTPStatusError as exc:
-        latency_ms = int((time.perf_counter() - started) * 1000)
-        _log_model_call(request_id, latency_ms, model, None, "model")
-        raise _model_error(
-            "MODEL_PROVIDER_ERROR",
-            f"model provider returned HTTP {exc.response.status_code}",
-        ) from exc
-
-    except httpx.RequestError as exc:
-        latency_ms = int((time.perf_counter() - started) * 1000)
-        _log_model_call(request_id, latency_ms, model, None, "model")
-        raise _model_error("MODEL_PROVIDER_ERROR", "model provider request failed") from exc
+        _log_model_call(request_id, latency_ms, model, None, "model", attempt)
+        raise _model_error("MODEL_TIMEOUT", "model request timed out") from None
 
     except (KeyError, ValueError, json.JSONDecodeError) as exc:
         latency_ms = int((time.perf_counter() - started) * 1000)
-        _log_model_call(request_id, latency_ms, model, None, "model")
+        _log_model_call(request_id, latency_ms, model, None, "model", attempt)
         raise _model_error("MODEL_PROVIDER_ERROR", "model response format was unexpected") from exc
