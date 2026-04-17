@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 
 from fastapi.testclient import TestClient
@@ -7,6 +8,16 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 client = TestClient(app)
+
+
+@dataclass
+class ModelError(ValueError):
+    code: str
+    message: str
+    failure_point: str
+
+    def __str__(self) -> str:
+        return self.message
 
 
 def _payload(request_id: str = "pm-001") -> dict:
@@ -126,17 +137,22 @@ def test_model_empty_response_returns_controlled_error(monkeypatch) -> None:
 
 
 def test_model_timeout_error_envelope_shape(monkeypatch) -> None:
+    request_id = "pm-timeout-001"
+
     def fake_model_output(*args, **kwargs) -> str:
-        raise ValueError(
-            '{"code":"MODEL_TIMEOUT","message":"model request timed out","failure_point":"model"}'
+        raise ModelError(
+            code="MODEL_TIMEOUT",
+            message="model request timed out",
+            failure_point="model",
         )
 
     monkeypatch.setattr("app.main.extract_invoice_json", fake_model_output)
 
-    resp = client.post("/v1/extract/invoice", json=_payload("pm-timeout-001"))
+    resp = client.post("/v1/extract/invoice", json=_payload(request_id))
     body = resp.json()
 
     assert resp.status_code == 400
     _assert_standard_error_envelope(body)
+    assert body["request_id"] == request_id
     assert body["error"]["code"] == "MODEL_TIMEOUT"
     assert body["error"]["failure_point"] == "model"

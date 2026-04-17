@@ -71,7 +71,14 @@ def _validation_error_response(
     _log(request_id, latency_ms, "validation")
     return JSONResponse(status_code=400, content=err.model_dump())
 
-def _safe_api_error_from_value_error(e: ValueError) -> ApiError:
+def _safe_api_error_from_value_error(e: Exception) -> ApiError:
+    if all(hasattr(e, attr) for attr in ("code", "message", "failure_point")):
+        code = getattr(e, "code")
+        message = getattr(e, "message")
+        failure_point = getattr(e, "failure_point")
+        if all(isinstance(v, str) and v for v in (code, message, failure_point)):
+            return ApiError(code=code, message=message, failure_point=failure_point)
+
     try:
         return ApiError.model_validate_json(str(e))
     except Exception:
